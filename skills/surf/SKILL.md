@@ -425,7 +425,7 @@ surf wait.dom --stable 500
 surf page.html --selector "#artifact" --strip-scripts > artifact.html
 ```
 
-Use `--selector <css>` to export its matching element only. A selector miss fails with an error. `--strip-scripts` removes scripts from exported markup without changing the page. Without `--selector`, `page.html` exports the whole document with its doctype. `page.html` exports the selected frame when `frame.switch` is active. Use `page.read` first when you need refs or visible text.
+Use `--selector <css>` to export its matching element only. A selector miss fails with an error. `--strip-scripts` removes scripts from exported markup without changing the page. Without `--selector`, `page.html` exports the whole document with its doctype. Use `page.read` first when you need refs or visible text.
 
 ## Semantic Element Location
 
@@ -562,14 +562,18 @@ surf frame.switch --selector "#payment-iframe"
 surf frame.switch --name "checkout"
 surf frame.switch --index 0    # First iframe
 surf frame.main                # Return to main frame
-surf frame.js "return document.title" --id "FRAME_ID"
+surf frame.js "return document.title" --id "CDP_FRAME_ID"
 
-# After frame.switch, subsequent commands target that frame:
+# Frame-aware page and interaction commands follow frame.switch:
 surf frame.switch --selector "#payment-iframe"
 surf page.read                 # Reads iframe content
+surf page.text                 # Reads raw iframe text
+surf page.state                # Inspects iframe UI state
 surf click --selector "#pay"   # Clicks in iframe
 surf frame.main                # Back to main page
 ```
+
+After `frame.switch`, `page.read`, `page.text`, `page.state`, and frame-aware interactions use the selected extension/content frame, including reachable OOPIFs. `js` refuses selected-frame execution with `UNSUPPORTED_FRAME_EXECUTION` rather than silently running in the main frame; use `frame.main` to restore normal main-frame behavior. `frame.js --id` is separate: it requires a CDP frame ID and cannot reach OOPIFs missing from the CDP tree. Tab, window, browser, and network commands are not frame-scoped.
 
 ## Network Inspection
 
