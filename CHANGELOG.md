@@ -2,13 +2,24 @@
 
 ## [Unreleased]
 
+## [2.21.0] - 2026-09-27
+
+### Highlights
+- Clicks, typing, scrolling, and `js` return faster because they no longer wait for the automatic screenshot.
+- Reading a page after `frame.switch` now reads the frame you picked, and `js` refuses to run in the wrong frame.
+- `page.read --all` now lists the whole page, and `--include-hidden` also shows hidden elements.
+- Very long pages no longer make `page.read` fail. You get the start of the tree and a file with the rest.
+
+### Added
+- **`page.read --include-hidden`** - Also lists hidden and `aria-hidden` elements. It implies `--all`. The Pi `surf_read` tool accepts the same option as `includeHidden`.
+
 ### Fixed
-- **Faster actions** - `click`, `type`, `scroll`, and the other actions that take an automatic screenshot now reply as soon as the action finishes. They no longer wait about 0.75 s, or up to 5 s when the window is not shown, for the capture. The reply reads `Screenshot (pending): <path>` and the file appears there shortly after; the next command on the same tab waits until it is written. A failed capture writes no file and is recorded in the host log. Remote clients still receive the screenshot before the reply. See [#328](https://github.com/nicobailon/surf-cli/issues/328).
-- **Faster `js`** - `js` no longer waits about 0.75 s for an automatic screenshot. Its output never showed that screenshot anyway. Remote clients from earlier releases must upgrade or pass `--no-screenshot` to `js`, because an updated host rejects the old request. See [#325](https://github.com/nicobailon/surf-cli/issues/325).
-- **Selected frame context** - `page.text` and `page.state` now use the frame selected by `frame.switch`, including reachable out-of-process iframes. In a selected frame, `js` fails with `UNSUPPORTED_FRAME_EXECUTION` and tells you to run `frame.main` first, instead of silently running in the main frame. See [#319](https://github.com/nicobailon/surf-cli/issues/319).
-- **`page.read --all`** - Lists every visible element on the page, including offscreen ones, instead of being ignored. Use `--include-hidden` to also list hidden and `aria-hidden` elements. See [#322](https://github.com/nicobailon/surf-cli/pull/322).
-- **Long page trees** - `page.read` no longer fails when the tree exceeds 50,000 characters. It returns the first 50,000 bytes, or `--max-bytes`, which now caps the tree as well as the text. A closing note gives the path of a private file with the full tree.
-- **Large responses** - Responses with no file paths to rewrite no longer fail with "response exceeds path rewrite limits". See [#322](https://github.com/nicobailon/surf-cli/pull/322).
+- **Faster actions** - `click`, `type`, `scroll`, and other actions that take an automatic screenshot now reply as soon as the action is done, instead of waiting about 0.75 s (up to 5 s when the window is hidden). The reply reads `Screenshot (pending): <path>`, and the file appears there a moment later. The next command on the same tab waits for it. If the capture fails, no file is written and the host log records why. Remote clients still get the screenshot before the reply. See [#328](https://github.com/nicobailon/surf-cli/issues/328).
+- **Faster `js`** - `js` no longer takes an automatic screenshot, which saves about 0.75 s. Its output never showed that screenshot. Remote clients from earlier releases must upgrade or pass `--no-screenshot` to `js`, because the new host rejects their old request. See [#325](https://github.com/nicobailon/surf-cli/issues/325).
+- **Selected frame** - After `frame.switch`, `page.text` and `page.state` read the selected frame, including out-of-process iframes the extension can reach. `js` in a selected frame now fails with `UNSUPPORTED_FRAME_EXECUTION` and tells you to run `frame.main` first, instead of quietly running in the main page. See [#319](https://github.com/nicobailon/surf-cli/issues/319).
+- **`page.read --all`** - Lists every visible element on the page, including offscreen ones. Before, the flag was ignored. See [#322](https://github.com/nicobailon/surf-cli/pull/322).
+- **Long pages** - `page.read` no longer fails when the tree is over 50,000 characters. It shows the first 50,000 bytes and ends with a note giving the path of a private file with the full tree. `--max-bytes` now limits the tree as well as the text.
+- **Large responses** - Large responses with no file paths in them no longer fail with "response exceeds path rewrite limits". See [#322](https://github.com/nicobailon/surf-cli/pull/322).
 
 Thanks to [@tryingET](https://github.com/tryingET) for [#319](https://github.com/nicobailon/surf-cli/issues/319), [#322](https://github.com/nicobailon/surf-cli/pull/322), and [#325](https://github.com/nicobailon/surf-cli/issues/325).
 
