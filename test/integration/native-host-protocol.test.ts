@@ -683,27 +683,24 @@ describe("native host protocol integration", () => {
       response: NativeMessage = { success: true },
       expectError = false,
     ) => {
-      const socket = net.createConnection(host.socketPath);
-      await new Promise<void>((resolve) => socket.once("connect", resolve));
-      const clientResponse = new Promise<NativeMessage>((resolve) => {
-        socket.once("data", (chunk: BufferLike) => resolve(JSON.parse(chunk.toString("utf8"))));
+      // A new connection per command, like separate CLI runs, so frame state must outlive it.
+      const transport = await openClientTransport({
+        kind: "local",
+        connectionOptions: host.socketPath,
       });
-      socket.write(
-        `${JSON.stringify({
-          type: "tool_request",
-          method: "execute_tool",
-          params: { tool, args },
-          id: tool,
-        })}\n`,
-      );
+      const clientResponse = transport.request({
+        type: "tool_request",
+        method: "execute_tool",
+        params: { tool, args },
+        id: tool,
+      });
       const extensionRequest = await host.waitForMessage(
         (message) => message.type === type,
         `${type} for ${tool}`,
       );
       host.send({ id: extensionRequest.id, ...response });
-      const received = await clientResponse;
-      expect(received.error !== undefined).toBe(expectError);
-      socket.end();
+      expect((await clientResponse).error !== undefined).toBe(expectError);
+      await transport.close();
       return extensionRequest;
     };
 
