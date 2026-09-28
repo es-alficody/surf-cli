@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [2.21.1] - 2026-09-28
+
+### Highlights
+- Surf's real-browser integration now tracks Chrome 154 through Puppeteer 25.12.
+- Pi integrations pick up the latest subagent reliability improvements.
+- Build, type, and MCP dependencies are up to date with their latest compatible fixes.
+
+### Changed
+- **Browser compatibility** - Updated Puppeteer to 25.12.0 and Chrome for Testing to 154.0.8037.57.
+- **Pi integration** - Updated Pi Subagents to 0.71.0.
+- **Dependencies** - Updated the MCP SDK to 1.30.1, Vite to 8.3.1, and Node.js types to 26.6.2.
+
 ## [2.21.0] - 2026-09-27
 
 ### Highlights
