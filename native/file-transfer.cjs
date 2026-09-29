@@ -263,6 +263,7 @@ async function writeAtomicDownload(destination, chunks, expected) {
 }
 
 function validateLocalToolPaths(tool, args = {}) {
+  validatePageChanges(tool, args.pageChanges);
   const normalized = { ...args };
   const normalize = (field, value) => parsePathDescriptor(value, { mode: "local", field }).path;
   if (tool === "upload" && args.files !== undefined) {
@@ -326,6 +327,20 @@ function rewriteTransferPaths(value, rewrites, depth = 0, seen = new Set(), budg
 }
 
 const AUTO_SCREENSHOT_TOOLS = Object.freeze(["click", "type", "key", "smart_type", "form.fill", "form_input", "drag", "hover", "scroll", "scroll.top", "scroll.bottom", "scroll.to", "dialog.accept", "dialog.dismiss", "eval"]);
+const PAGE_CHANGES_TOOLS = Object.freeze([...AUTO_SCREENSHOT_TOOLS, "select"]);
+// Keeps BEGIN, settle, capture and the reply inside the host's 60s request deadline.
+const MAX_SETTLE_MS = 30000;
+
+function isSettleMs(value) {
+  return Number.isInteger(value) && value >= 0 && value <= MAX_SETTLE_MS;
+}
+
+function validatePageChanges(tool, value) {
+  if (value === undefined) return;
+  if (!PAGE_CHANGES_TOOLS.includes(tool)) throw transferError(`pageChanges is not supported for ${tool}`, "SURF_PATH_DESCRIPTOR");
+  if (!isPlainObject(value) || Object.keys(value).join() !== "settleMs" || !isSettleMs(value.settleMs)) throw transferError(`pageChanges must be { settleMs: integer from 0 to ${MAX_SETTLE_MS} }`, "SURF_PATH_DESCRIPTOR");
+}
+
 function generatedClientPath(prefix, extension) {
   return path.join(os.tmpdir(), `surf-${prefix}-${crypto.randomBytes(12).toString("hex")}${extension}`);
 }
@@ -360,6 +375,7 @@ function prepareRemoteTool(tool, args = {}) {
   if (args.autoScreenshot !== undefined && typeof args.autoScreenshot !== "boolean") throw transferError("autoScreenshot must be boolean", "SURF_PATH_DESCRIPTOR");
   if (args.autoScreenshot === true && !AUTO_SCREENSHOT_TOOLS.includes(tool)) throw transferError(`autoScreenshot is not supported for ${tool}`, "SURF_PATH_DESCRIPTOR");
   if (args.autoScreenshotOutput !== undefined) throw transferError("autoScreenshotOutput is internal", "SURF_PATH_DESCRIPTOR");
+  validatePageChanges(tool, args.pageChanges);
   if (tool === "record") throw transferError("record is not supported with remote endpoint", "SURF_REMOTE_UNSUPPORTED");
   if (typeof tool === "string" && tool.startsWith("video.")) throw transferError("video recording is not supported with remote endpoint", "SURF_REMOTE_UNSUPPORTED");
   if (tool === "aistudio.build") throw transferError("aistudio.build is not supported for remote connections", "SURF_REMOTE_UNSUPPORTED");
@@ -439,6 +455,7 @@ async function materializeRemoteTool({ tool, args: rawArgs = {}, metadata = null
   if (args.autoScreenshot !== undefined && typeof args.autoScreenshot !== "boolean") throw transferError("autoScreenshot must be boolean", "SURF_PATH_DESCRIPTOR");
   if (args.autoScreenshot === true && !AUTO_SCREENSHOT_TOOLS.includes(tool)) throw transferError(`autoScreenshot is not supported for ${tool}`, "SURF_PATH_DESCRIPTOR");
   if (args.autoScreenshotOutput !== undefined && !(args.autoScreenshot === true && AUTO_SCREENSHOT_TOOLS.includes(tool))) throw transferError("autoScreenshotOutput is internal", "SURF_PATH_DESCRIPTOR");
+  validatePageChanges(tool, args.pageChanges);
   const meta = metadata === undefined || metadata === null ? {} : exactTransferObject(metadata, ["uploads", "downloads"], "transfer metadata");
   const uploads = meta.uploads === undefined ? [] : meta.uploads;
   const downloads = meta.downloads === undefined ? [] : meta.downloads;
@@ -722,6 +739,8 @@ function createClientTransferController({ writer, limits = {}, onActivity = () =
 
 module.exports = {
   AUTO_SCREENSHOT_TOOLS,
+  PAGE_CHANGES_TOOLS,
+  MAX_SETTLE_MS,
   DEFAULT_LIMITS,
   TRANSFER_VERSION,
   TRANSFER_TYPES,
@@ -733,6 +752,7 @@ module.exports = {
   decodeBase64,
   streamFileDownload,
   hashFile,
+  isSettleMs,
   materializeRemoteTool,
   parsePathDescriptor,
   prepareRemoteTool,

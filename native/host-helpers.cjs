@@ -270,10 +270,6 @@ function formatToolContent(result, log = () => {}) {
     
     output += content;
     
-    if (result.isIncremental && result.diff) {
-      output += `\n--- Diff from previous snapshot ---\n${result.diff}`;
-    }
-    
     if (result.modalStates && result.modalStates.length > 0) {
       output += `\n\n[ACTION REQUIRED] Modal blocking page - dismiss before proceeding:`;
       output += `\n  -> Press Escape key: computer(action="key", text="Escape")`;
@@ -647,7 +643,6 @@ function mapToolToMessage(tool, args, tabId) {
           depth: a.depth,
           refId: a.ref_id,
           format: a.format,
-          forceFullSnapshot: a.forceFullSnapshot ?? false,
           includeScreenshot: a.includeScreenshot ?? false
         },
         ...baseMsg 
@@ -1020,7 +1015,6 @@ function mapToolToMessage(tool, args, tabId) {
           depth: a.depth !== undefined ? parseInt(a.depth, 10) : undefined,
           compact: a.compact || false,
           maxBytes,
-          forceFullSnapshot: a.compact === true || maxBytes !== undefined,
           ...(a.semanticObservation === true ? { semanticObservation: true } : {}),
         },
         ...baseMsg
