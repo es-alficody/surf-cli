@@ -1103,18 +1103,29 @@ describe("CLI argument parsing", () => {
     }
   });
 
-  it("rejects explicit CDP typing with selector targets", async () => {
-    const { code, stderr } = await runCliWithoutSocket([
+  it.each([
+    ["--into", "#target"],
+    ["--selector", "#target"],
+    ["--ref", "e1"],
+  ])("preserves explicit CDP typing target %s", async (flag, target) => {
+    const { request } = await runCli([
       "type",
       "hello",
-      "--into",
-      "#target",
+      flag,
+      target,
       "--method",
       "cdp",
+      "--clear",
+      "--submit",
     ]);
-
-    expect(code).toBe(1);
-    expect(stderr).toContain("--method cdp types at the current focus");
+    expect(request.params.tool).toBe("type");
+    expect(request.params.args).toMatchObject({
+      method: "cdp",
+      text: "hello",
+      clear: true,
+      submit: true,
+      [flag === "--ref" ? "ref" : "selector"]: target,
+    });
   });
 
   it("rejects explicit CDP method on smart_type", async () => {

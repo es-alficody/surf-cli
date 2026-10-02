@@ -148,6 +148,7 @@ interface KeyDefinition {
   code: string;
   keyCode: number;
   text?: string;
+  unmodifiedText?: string;
   location?: number;
 }
 
@@ -182,6 +183,7 @@ const KEY_DEFINITIONS: Record<string, KeyDefinition> = {
 
 export class CDPController {
   private static readonly SCREENSHOT_TIMEOUT_MS = 5000;
+  private focusUsers = new Map<number, number>();
   private targets = new Map<number, Debuggee>();
   private consoleMessages: Map<number, ConsoleMessage[]> = new Map();
   private networkRequests: Map<number, NetworkRequest[]> = new Map();
@@ -1373,21 +1375,41 @@ export class CDPController {
     return { parses: true };
   }
 
-  async evaluateScript(tabId: number, expression: string): Promise<{
+  async evaluateScript(tabId: number, expression: string, timeoutMs = 15000): Promise<{
     result?: { value?: any; type?: string; description?: string };
     exceptionDetails?: { text?: string; exception?: { description?: string } };
   }> {
-    await this.ensureAttached(tabId);
-    try {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let expired = false;
+    const work = (async () => {
+      await this.ensureAttached(tabId);
+      if (expired) return {};
       await this.send(tabId, "Runtime.enable");
-    } catch (e) {}
-    
-    return this.send(tabId, "Runtime.evaluate", {
-      expression,
-      returnByValue: true,
-      awaitPromise: true,
-      timeout: 30000,
-    });
+      if (expired) return {};
+      return this.send(tabId, "Runtime.evaluate", {
+        expression,
+        returnByValue: true,
+        awaitPromise: true,
+        timeout: timeoutMs,
+      });
+    })();
+    try {
+      return await Promise.race([
+        work,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            expired = true;
+            reject(new CDPControllerError(
+              "cdp_timeout",
+              `JavaScript runtime in tab ${tabId} did not respond within ${timeoutMs}ms. Inspect page.health before retrying; the script may still be running.`,
+              { tabId, timeoutMs, recoveryCommand: `surf page.health --tab-id ${tabId}` },
+            ));
+          }, timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   private async send(
@@ -1440,11 +1462,16 @@ export class CDPController {
     height: number;
   }> {
     return this.withScreenshotDeadline(tabId, (async () => {
+      const metrics = await this.send(tabId, "Page.getLayoutMetrics");
+      const viewport = metrics.cssVisualViewport || metrics.visualViewport || metrics.layoutViewport;
+      const width = Math.round(viewport.clientWidth);
+      const height = Math.round(viewport.clientHeight);
       const result: { data: string } = await this.send(tabId, "Page.captureScreenshot", {
         format: "png",
-        captureBeyondViewport: false,
+        fromSurface: true,
+        captureBeyondViewport: true,
+        clip: { x: viewport.pageX || 0, y: viewport.pageY || 0, width, height, scale: 1 },
       });
-      const { width, height } = await this.getViewportSize(tabId);
       return { base64: result.data, width, height };
     })());
   }
@@ -1474,6 +1501,8 @@ export class CDPController {
       tabId,
       this.send(tabId, "Page.captureScreenshot", {
         format: "png",
+        fromSurface: true,
+        captureBeyondViewport: true,
         clip: { x, y, width, height, scale: 1 },
       }),
     );
@@ -1604,19 +1633,50 @@ export class CDPController {
   }
 
   async type(tabId: number, text: string): Promise<void> {
-    for (const char of text) {
-      if (char === "\n" || char === "\r") {
-        await this.pressKey(tabId, "Enter");
-      } else {
-        const keyDef = this.getKeyDefinition(char);
-        if (keyDef) {
-          const needsShift = this.requiresShift(char);
-          await this.pressKey(tabId, char, needsShift ? MODIFIERS.shift : 0);
+    await this.withFocusEmulation(tabId, async () => {
+      for (const char of text.replace(/\r\n/g, "\n")) {
+        if (char === "\n" || char === "\r") {
+          await this.pressKey(tabId, "Enter");
         } else {
-          await this.send(tabId, "Input.insertText", { text: char });
+          const keyDef = this.getKeyDefinition(char);
+          if (keyDef) {
+            const needsShift = this.requiresShift(char);
+            await this.pressKey(tabId, char, needsShift ? MODIFIERS.shift : 0);
+          } else {
+            await this.send(tabId, "Input.insertText", { text: char });
+          }
         }
       }
+    });
+  }
+
+  /** Keep input in the bound tab without activating a browser window. */
+  async withFocusEmulation<T>(tabId: number, work: () => Promise<T>): Promise<T> {
+    if (!this.focusUsers.has(tabId)) {
+      await this.send(tabId, "Emulation.setFocusEmulationEnabled", { enabled: true });
     }
+    this.focusUsers.set(tabId, (this.focusUsers.get(tabId) || 0) + 1);
+    try {
+      return await work();
+    } finally {
+      const remaining = (this.focusUsers.get(tabId) || 1) - 1;
+      if (remaining > 0) this.focusUsers.set(tabId, remaining);
+      else {
+        this.focusUsers.delete(tabId);
+        await this.send(tabId, "Emulation.setFocusEmulationEnabled", { enabled: false }).catch(() => {});
+      }
+    }
+  }
+
+  async clearFocusedInput(tabId: number): Promise<void> {
+    // CDP editing commands avoid platform-dependent Ctrl+A / Cmd+A.
+    await this.send(tabId, "Input.dispatchKeyEvent", {
+      type: "rawKeyDown", key: "a", code: "KeyA", windowsVirtualKeyCode: 65, commands: ["selectAll"],
+    });
+    await this.send(tabId, "Input.dispatchKeyEvent", {
+      type: "keyUp", key: "a", code: "KeyA", windowsVirtualKeyCode: 65,
+    });
+    await this.pressKey(tabId, "Backspace");
   }
 
   private requiresShift(char: string): boolean {
@@ -1629,14 +1689,15 @@ export class CDPController {
     keyDef: KeyDefinition,
     modifiers = 0
   ): Promise<void> {
+    const insertsText = type !== "keyUp" && !(modifiers & (MODIFIERS.ctrl | MODIFIERS.meta | MODIFIERS.alt));
     await this.send(tabId, "Input.dispatchKeyEvent", {
       type: keyDef.text ? type : (type === "keyDown" ? "rawKeyDown" : type),
       key: keyDef.key,
       code: keyDef.code,
       windowsVirtualKeyCode: keyDef.keyCode,
       modifiers,
-      text: keyDef.text ?? "",
-      unmodifiedText: keyDef.text ?? "",
+      text: insertsText ? keyDef.text ?? "" : "",
+      unmodifiedText: insertsText ? keyDef.unmodifiedText ?? keyDef.text?.toLowerCase() ?? "" : "",
       location: keyDef.location ?? 0,
     });
   }
@@ -1647,8 +1708,10 @@ export class CDPController {
       throw new Error(`Unknown key: ${key}`);
     }
 
-    await this.dispatchKeyEvent(tabId, "keyDown", keyDef, modifiers);
-    await this.dispatchKeyEvent(tabId, "keyUp", keyDef, modifiers);
+    await this.withFocusEmulation(tabId, async () => {
+      await this.dispatchKeyEvent(tabId, "keyDown", keyDef, modifiers);
+      await this.dispatchKeyEvent(tabId, "keyUp", keyDef, modifiers);
+    });
   }
 
   async pressKeyChord(tabId: number, chord: string): Promise<void> {
@@ -1681,7 +1744,7 @@ export class CDPController {
       return KEY_DEFINITIONS[lowerKey];
     }
 
-    if (key.length === 1) {
+    if (/^[a-z]$/i.test(key)) {
       const code = key.toUpperCase().charCodeAt(0);
       return {
         key,
@@ -1689,6 +1752,21 @@ export class CDPController {
         keyCode: code,
         text: key,
       };
+    }
+
+    if (/^[0-9]$/.test(key)) return { key, code: `Digit${key}`, keyCode: key.charCodeAt(0), text: key };
+    if (key === " ") return KEY_DEFINITIONS.space;
+    const shiftedDigits = ")!@#$%^&*(";
+    const digit = shiftedDigits.indexOf(key);
+    if (key.length === 1 && digit >= 0) return { key, code: `Digit${digit}`, keyCode: 48 + digit, text: key, unmodifiedText: String(digit) };
+    const punctuation: Array<[string, string, number]> = [
+      ["-_", "Minus", 189], ["=+", "Equal", 187], ["[{", "BracketLeft", 219],
+      ["]}", "BracketRight", 221], ["\\|", "Backslash", 220], [";:", "Semicolon", 186],
+      ["'\"", "Quote", 222], [",<", "Comma", 188], [".>", "Period", 190],
+      ["/?", "Slash", 191], ["`~", "Backquote", 192],
+    ];
+    for (const [characters, code, keyCode] of punctuation) {
+      if (key.length === 1 && characters.includes(key)) return { key, code, keyCode, text: key, unmodifiedText: characters[0] };
     }
 
     return null;

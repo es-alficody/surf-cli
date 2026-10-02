@@ -80,6 +80,24 @@ class BrowserCommandError extends Error {
   }
 }
 
+async function contentRequest(tabId: number, message: object, frameId = 0, timeoutMs = 10000): Promise<any> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      chrome.tabs.sendMessage(tabId, message, { frameId }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new BrowserCommandError(
+          "content_script_timeout",
+          `Content script in tab ${tabId}, frame ${frameId} did not respond within ${timeoutMs}ms. Inspect page.health before retrying.`,
+          { tabId, frameId, timeoutMs, recoveryCommand: `surf page.health --tab-id ${tabId}` },
+        )), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 async function inspectTarget(tabId: number): Promise<{
   tabId: number;
   windowId: number;
@@ -899,7 +917,7 @@ export async function handleMessage(
       if (!tabId) throw new Error("No tabId provided");
 
       try {
-        await chrome.tabs.sendMessage(tabId, { type: "HIDE_FOR_TOOL_USE" }, { frameId: 0 });
+        await contentRequest(tabId, { type: "HIDE_FOR_TOOL_USE" }, 0, 250);
       } catch (e) {}
       await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -929,15 +947,14 @@ export async function handleMessage(
           } catch (cdpError) {
             const tab = await chrome.tabs.get(tabId);
             if (!tab.windowId) throw cdpError;
-            if (message.strictTarget) {
-              const [activeTab] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
-              if (activeTab?.id !== tabId) {
-                throw new BrowserCommandError(
-                  "screenshot_target_not_visible",
-                  `Cannot use screenshot fallback because tab ${tabId} is not visible in window ${tab.windowId}`,
-                  { tabId, windowId: tab.windowId, activeTabId: activeTab?.id },
-                );
-              }
+            const [activeTab] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
+            if (activeTab?.id !== tabId) {
+              const cause = cdpError instanceof Error ? cdpError.message : String(cdpError);
+              throw new BrowserCommandError(
+                "screenshot_target_not_visible",
+                `Background CDP capture failed for tab ${tabId}: ${cause}. Visible-tab fallback cannot capture this target.`,
+                { tabId, windowId: tab.windowId, activeTabId: activeTab?.id, cdpError: cause, recoveryCommand: `surf page.health --tab-id ${tabId}` },
+              );
             }
             const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
             const base64 = dataUrl.replace(/^data:image\/png;base64,/, "");
@@ -956,9 +973,9 @@ export async function handleMessage(
 
         if (message.annotate && !usedFallback) {
           try {
-            const treeResult = await chrome.tabs.sendMessage(tabId, {
+            const treeResult = await contentRequest(tabId, {
               type: "GET_ELEMENT_BOUNDS_FOR_ANNOTATION",
-            }, { frameId: 0 });
+            });
 
             if (treeResult?.elements && treeResult.elements.length > 0) {
               result = await annotateScreenshot(result, treeResult.elements, scaleInfo);
@@ -971,7 +988,7 @@ export async function handleMessage(
         return { ...result, screenshotId };
       } finally {
         try {
-          await chrome.tabs.sendMessage(tabId, { type: "SHOW_AFTER_TOOL_USE" }, { frameId: 0 });
+          await contentRequest(tabId, { type: "SHOW_AFTER_TOOL_USE" }, 0, 250);
         } catch (e) {}
       }
     }
@@ -1020,7 +1037,17 @@ export async function handleMessage(
     case "EXECUTE_TYPE": {
       if (!tabId) throw new Error("No tabId provided");
       if (message.text === undefined || message.text === null) throw new Error("No text provided");
-      await cdp.type(tabId, message.text);
+      await cdp.withFocusEmulation(tabId, async () => {
+        if (message.ref || message.selector) {
+          const focused = await contentRequest(tabId, {
+            type: "FOCUS_ELEMENT", ref: message.ref, selector: message.selector, expectedIdentity: message.expectedIdentity,
+          }, getFrameIdForTab(tabId, message));
+          if (!focused?.success) throw new BrowserCommandError(focused?.code || "input_focus_failed", focused?.error || "Could not focus target field", { tabId });
+        }
+        if (message.clear) await cdp.clearFocusedInput(tabId);
+        await cdp.type(tabId, message.text);
+        if (message.submit) await cdp.pressKey(tabId, message.submitKey || "Enter");
+      });
       return { success: true };
     }
 
@@ -1234,6 +1261,31 @@ export async function handleMessage(
       return { success: true };
     }
 
+    case "PAGE_HEALTH": {
+      if (!tabId) throw new Error("No tabId provided");
+      const frameId = getFrameIdForTab(tabId, message);
+      const started = Date.now();
+      const probe = async (work: Promise<any>) => {
+        const start = Date.now();
+        try {
+          const result = await work;
+          if (!result || result.error || result.exceptionDetails) throw new Error(result?.error || result?.exceptionDetails?.text || "Empty probe response");
+          return { responsive: true, latencyMs: Date.now() - start };
+        } catch (error) {
+          return { responsive: false, latencyMs: Date.now() - start, error: error instanceof Error ? error.message : String(error) };
+        }
+      };
+      const [target, contentScript, runtime] = await Promise.all([
+        inspectTarget(tabId),
+        probe(contentRequest(tabId, { type: "PING" }, frameId, 1500)),
+        probe(cdp.evaluateScript(tabId, "1", 1500)),
+      ]);
+      const healthy = contentScript.responsive && runtime.responsive;
+      return { healthy, target, frameId, contentScript, runtime, elapsedMs: Date.now() - started,
+        ...(healthy ? {} : { recoveryCommand: `surf reload --tab-id ${tabId}`, hint: "session.ensure validates the tab binding, not page responsiveness. Reload only when losing unsaved page state is acceptable; read again for fresh refs." }),
+      };
+    }
+
     case "PAGE_STATE": {
       if (!tabId) throw new Error("No tabId provided");
       const [state] = await chrome.scripting.executeScript({
@@ -1389,17 +1441,18 @@ export async function handleMessage(
       if (!tabId) throw new Error("No tabId provided");
       const readFrameId = getFrameIdForTab(tabId, message);
       try {
-        await chrome.tabs.sendMessage(tabId, { type: "HIDE_FOR_TOOL_USE" }, { frameId: 0 });
+        await contentRequest(tabId, { type: "HIDE_FOR_TOOL_USE" }, 0, 250);
       } catch (e) {}
       await new Promise(resolve => setTimeout(resolve, 50));
 
       let result;
       try {
-        result = await chrome.tabs.sendMessage(tabId, {
+        result = await contentRequest(tabId, {
           type: "GENERATE_ACCESSIBILITY_TREE",
           options: message.options || {},
-        }, { frameId: readFrameId });
+        }, readFrameId);
       } catch (err) {
+        if (err instanceof BrowserCommandError) throw err;
         return {
           error: "Content script not loaded. Try refreshing the page.",
           pageContent: "",
@@ -1407,14 +1460,14 @@ export async function handleMessage(
         };
       } finally {
         try {
-          await chrome.tabs.sendMessage(tabId, { type: "SHOW_AFTER_TOOL_USE" }, { frameId: 0 });
+          await contentRequest(tabId, { type: "SHOW_AFTER_TOOL_USE" }, 0, 250);
         } catch (e) {}
       }
 
       // Include visible text content if requested
       if (message.options?.includeText) {
         try {
-          const textResult = await chrome.tabs.sendMessage(tabId, { type: "GET_PAGE_TEXT" }, { frameId: readFrameId });
+          const textResult = await contentRequest(tabId, { type: "GET_PAGE_TEXT" }, readFrameId);
           if (textResult?.text) {
             result.text = textResult.text;
           }
@@ -2307,6 +2360,12 @@ export async function handleMessage(
         data: message.data,
         expectedIdentity: message.expectedIdentity,
       }, { frameId: getFrameIdForTab(tabId, message) });
+      if (message.submit && !response?.error && response?.success !== false && !response?.errors?.length) {
+        const last = message.data[message.data.length - 1];
+        const focused = await contentRequest(tabId, { type: "FOCUS_ELEMENT", ref: last?.ref }, getFrameIdForTab(tabId, message));
+        if (!focused?.success) return { error: focused?.error || "Could not focus submit field" };
+        await cdp.pressKey(tabId, "Enter");
+      }
       return response;
     }
 
@@ -2556,6 +2615,7 @@ export async function handleMessage(
         if (msg.includes("Cannot access") || msg.includes("Cannot attach")) {
           return { error: "Cannot execute JavaScript on this page (restricted URL)" };
         }
+        if (err instanceof Error && "code" in err && err.code === "cdp_timeout") throw err;
         return { error: msg };
       }
     }

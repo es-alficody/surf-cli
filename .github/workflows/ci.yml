@@ -88,6 +88,9 @@ jobs:
       - name: Run real Chrome E2E
         run: npm run test:e2e:chrome
 
+      - name: Verify background input and screenshots
+        run: npm run test:e2e:input
+
   audit:
     runs-on: ubuntu-latest
     steps:

@@ -57,6 +57,11 @@ describe("tool scope classification", () => {
   });
 
   it("keeps readiness probes on the tab lane", () => {
+    expect(classifyTool("page.health", {})).toEqual({
+      scope: "tab",
+      targetUse: "default-tab",
+      resourceKeys: [],
+    });
     expect(classifyTool("wait.ready", { selector: ".x" })).toEqual({
       scope: "tab",
       targetUse: "default-tab",

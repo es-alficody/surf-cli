@@ -336,11 +336,18 @@ surf click 100 200                  # Click by coordinates
 surf type "hello" --submit          # Type at the current focus with CDP events
 surf type "email@example.com" --ref e12  # Fill an element from page.read
 surf type "hello" --into "#message"     # Fill a selector in the active frame
+surf type "query" --ref e12 --method cdp --clear --submit  # Trusted input + Enter
 surf key Escape                     # Press key
 surf scroll down 800                # Scroll down 800px
 surf scroll bottom                  # Scroll to bottom
 surf scroll.bottom                  # Dot command form also works
 ```
+
+For fields that require keyboard input (including D365 controls), use `type --method cdp` with a current ref or `--into` selector. Surf focuses that field in its selected frame and sends browser keyboard events, including in background tabs. `--clear` selects and deletes existing text; `--submit` sends Enter. Without `--clear`, CDP typing inserts at the cursor. The default ref/selector path still writes DOM values; use the CDP path when the displayed value does not reach the application's model. Verify the application's result after submitting.
+
+Screenshots capture the bound tab's rendering surface without activating it. If CDP capture fails, Surf includes its error and only uses visible-tab capture when the same target is visible.
+
+After a stalled command, run `surf page.health --json` in the same session. It probes the content script and JavaScript runtime within 1.5 seconds. Reads have a 10-second content-script deadline, and JavaScript evaluations have a 15-second deadline. A timed-out script may still be running; inspect health and application state before retrying a write. `session.ensure` validates the tab binding, not page responsiveness. If reloading is acceptable, use `surf reload` and then `surf page.read` to refresh refs; navigation and re-renders can invalidate old refs.
 
 ### Forms
 

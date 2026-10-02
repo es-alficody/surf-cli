@@ -534,6 +534,19 @@ surf emulate.geo --clear
 
 ## Form Automation
 
+For D365 or another field whose visible DOM value does not reach its application model, use trusted keyboard input:
+
+```bash
+surf page.read
+surf type "search term" --ref e5 --method cdp --clear --submit
+# Or target a selector in the current frame:
+surf type "search term" --into '#SearchTextBox' --method cdp --clear --submit
+```
+
+CDP mode focuses the exact target, works in background tabs, and honors the selected iframe. `--clear` deletes existing text using keyboard events; without it, CDP inserts at the cursor. `--submit` sends a trusted Enter. Check the application's result after submission. A successful DOM fill does not prove the application's model committed the value. Keep DOM clicks via `js` for D365 controls where they already work.
+
+Background screenshots use the target's rendering surface without switching tabs. After a timeout, use `surf page.health --json` in the same session to probe the content script and CDP runtime (1.5s budget). Reads fail with `content_script_timeout` after 10s; JavaScript evaluations fail with `cdp_timeout` after 15s. Surf does not retry a timed-out script, which may still be running. Inspect application state before repeating writes. `session.ensure` checks the binding rather than page responsiveness. Reload only when losing unsaved state is acceptable, then run `page.read` for fresh refs. Refresh refs after navigation or a stale-ref error.
+
 ```bash
 surf page.read                 # Get element refs first
 

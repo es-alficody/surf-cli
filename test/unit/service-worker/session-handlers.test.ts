@@ -89,32 +89,35 @@ describe("browser session handlers", () => {
     });
   });
 
-  it("fails screenshot fallback closed when a strict tab is not visible", async () => {
-    const handleMessage = await loadHandleMessage();
-    const chrome = (globalThis as any).chrome;
-    chrome.tabs.get.mockResolvedValue({
-      id: 61,
-      windowId: 14,
-      active: false,
-      groupId: -1,
-      url: "https://example.com/",
-    });
-    chrome.tabs.query.mockResolvedValue([{ id: 62, windowId: 14, active: true }]);
-    chrome.debugger.sendCommand.mockRejectedValue(new Error("capture unavailable"));
+  it.each([true, false])(
+    "fails screenshot fallback closed when the target is not visible (strict=%s)",
+    async (strictTarget) => {
+      const handleMessage = await loadHandleMessage();
+      const chrome = (globalThis as any).chrome;
+      chrome.tabs.get.mockResolvedValue({
+        id: 61,
+        windowId: 14,
+        active: false,
+        groupId: -1,
+        url: "https://example.com/",
+      });
+      chrome.tabs.query.mockResolvedValue([{ id: 62, windowId: 14, active: true }]);
+      chrome.debugger.sendCommand.mockRejectedValue(new Error("capture unavailable"));
 
-    await expect(
-      handleMessage(
-        {
-          type: "EXECUTE_SCREENSHOT",
-          tabId: 61,
-          strictTarget: true,
-        },
-        {},
-      ),
-    ).rejects.toMatchObject({ code: "screenshot_target_not_visible" });
-    expect(chrome.tabs.update).not.toHaveBeenCalled();
-    expect(chrome.windows.update).not.toHaveBeenCalled();
-  });
+      await expect(
+        handleMessage(
+          {
+            type: "EXECUTE_SCREENSHOT",
+            tabId: 61,
+            strictTarget,
+          },
+          {},
+        ),
+      ).rejects.toMatchObject({ code: "screenshot_target_not_visible" });
+      expect(chrome.tabs.update).not.toHaveBeenCalled();
+      expect(chrome.windows.update).not.toHaveBeenCalled();
+    },
+  );
 
   it("settles direct capture after a CDP timeout without capturing another strict tab", async () => {
     vi.useFakeTimers();
@@ -133,7 +136,7 @@ describe("browser session handlers", () => {
         ? new Promise(() => {
             /* intentionally pending */
           })
-        : Promise.resolve({}),
+        : Promise.resolve({ cssVisualViewport: { clientWidth: 800, clientHeight: 600 } }),
     );
 
     const capture = handleMessage(
@@ -166,7 +169,7 @@ describe("browser session handlers", () => {
         ? new Promise(() => {
             /* intentionally pending */
           })
-        : Promise.resolve({}),
+        : Promise.resolve({ cssVisualViewport: { clientWidth: 800, clientHeight: 600 } }),
     );
 
     const read = handleMessage(

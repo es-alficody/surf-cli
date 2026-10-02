@@ -1969,6 +1969,41 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse(result);
       break;
     }
+    case "FOCUS_ELEMENT": {
+      try {
+        const resolved = message.ref ? resolveRef(message.ref) : { element: document.querySelector(message.selector) };
+        const guardError = semanticGuardError(resolved.element, message.expectedIdentity);
+        if (guardError) {
+          sendResponse({ error: guardError, code: guardError });
+          break;
+        }
+        const element = resolved.element as HTMLElement | null | undefined;
+        if (!element) {
+          sendResponse({ error: "error" in resolved ? resolved.error : `Element not found: ${message.selector}` });
+          break;
+        }
+        const target = element.querySelector<HTMLElement>('[contenteditable="true"]') || element;
+        if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable)) {
+          sendResponse({ error: "Target is not an editable text field" });
+          break;
+        }
+        if (target instanceof HTMLInputElement && !["text", "search", "email", "url", "tel", "password", "number"].includes(target.type)) {
+          sendResponse({ error: `Input type ${target.type} does not support text typing` });
+          break;
+        }
+        if (target.matches(":disabled, [readonly]")) {
+          sendResponse({ error: "Target is disabled or read-only" });
+          break;
+        }
+        target.scrollIntoView({ block: "center", behavior: "instant" });
+        target.focus();
+        const root = target.getRootNode() as Document | ShadowRoot;
+        sendResponse(root.activeElement === target ? { success: true } : { error: "Could not focus target field" });
+      } catch (error) {
+        sendResponse({ error: error instanceof Error ? error.message : String(error) });
+      }
+      break;
+    }
     case "PAGE_READINESS": {
       try {
         sendResponse(probePageReadiness(createDomProbe(document, window), message.expect || {}));

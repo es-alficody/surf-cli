@@ -50,6 +50,7 @@
     "test": "vitest run",
     "test:package": "node test/package-artifact.mjs",
     "test:e2e:chrome": "node test/e2e/real-chrome.mjs",
+    "test:e2e:input": "node test/e2e/background-input.mjs",
     "eval:jev": "node test/eval/real-jev.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

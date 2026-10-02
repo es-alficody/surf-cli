@@ -280,6 +280,41 @@ describe("mapToolToMessage", () => {
   });
 
   describe("type command", () => {
+    it.each([{ ref: "e1" }, { selector: "#search" }, { into: "#search" }])(
+      "routes a targeted CDP request through trusted input: %j",
+      (target) => {
+        expect(
+          helpers.mapToolToMessage(
+            "type",
+            { ...target, method: "cdp", text: "query", clear: true, submit: true },
+            42,
+          ),
+        ).toMatchObject({
+          type: "EXECUTE_TYPE",
+          tabId: 42,
+          text: "query",
+          clear: true,
+          submit: true,
+          ...(target.ref ? { ref: "e1" } : { selector: "#search" }),
+        });
+      },
+    );
+
+    it("preserves clear and submit on cursor typing and submit on JS ref typing", () => {
+      expect(
+        helpers.mapToolToMessage("type", { text: "query", clear: true, submit: true }),
+      ).toMatchObject({ type: "EXECUTE_TYPE", clear: true, submit: true });
+      expect(
+        helpers.mapToolToMessage("type", { ref: "e1", text: "query", submit: true }),
+      ).toMatchObject({ type: "FORM_FILL", submit: true });
+    });
+
+    it("maps page.health to a targeted diagnostic", () => {
+      expect(helpers.mapToolToMessage("page.health", {}, 42)).toEqual({
+        type: "PAGE_HEALTH",
+        tabId: 42,
+      });
+    });
     it("routes a selector target to SMART_TYPE", () => {
       const msg = helpers.mapToolToMessage("type", { text: "hello", selector: "#i" });
       expect(msg.type).toBe("SMART_TYPE");

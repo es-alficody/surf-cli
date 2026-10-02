@@ -552,14 +552,16 @@ function mapComputerAction(args, tabId) {
       return { type: "EXECUTE_TRIPLE_CLICK", x: coordinate?.[0], y: coordinate?.[1], modifiers, ...baseMsg };
     
     case "type": {
-      if (ref) {
-        return { type: "FORM_FILL", data: [{ ref, value: text }], expectedIdentity: a.semanticExpectedIdentity, ...baseMsg };
-      }
       const typeSelector = a.selector || a.into;
+      if (a.method === "cdp" || (!ref && !typeSelector)) {
+        return { type: "EXECUTE_TYPE", text, ref, selector: typeSelector, clear: a.clear ?? false, submit: a.submit ?? false, expectedIdentity: a.semanticExpectedIdentity, ...baseMsg };
+      }
+      if (ref) {
+        return { type: "FORM_FILL", data: [{ ref, value: text }], submit: a.submit ?? false, expectedIdentity: a.semanticExpectedIdentity, ...baseMsg };
+      }
       if (typeSelector) {
         return { type: "SMART_TYPE", selector: typeSelector, text, clear: a.clear ?? true, submit: a.submit ?? false, ...baseMsg };
       }
-      return { type: "EXECUTE_TYPE", text, ...baseMsg };
     }
     
     case "key": {
@@ -1068,6 +1070,8 @@ function mapToolToMessage(tool, args, tabId) {
     }
     case "page.state":
       return { type: "PAGE_STATE", ...baseMsg };
+    case "page.health":
+      return { type: "PAGE_HEALTH", ...baseMsg };
     case "locate.role":
       if (!a.role) throw new Error("role argument required");
       return { 

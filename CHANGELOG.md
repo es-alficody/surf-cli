@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+- `type --method cdp` supports refs and selectors in the selected frame, with background focus emulation and trusted clear/submit events.
+- `page.health` reports content-script and CDP runtime responsiveness with a 1.5-second probe budget.
+
+### Fixed
+- Cursor typing now honors `--clear` and `--submit`; DOM ref typing honors `--submit`.
+- CDP text entry uses correct key codes for spaces, digits and punctuation, avoids inserting shortcut/key-up text, and uses `Input.insertText` for Unicode.
+- Background screenshots capture an explicit viewport from the target's surface. Visible-tab fallback never captures a different tab and preserves the original CDP failure.
+- Page reads and JavaScript evaluations have bounded deadlines and actionable timeout details, with no automatic replay of scripts.
+
 ## [2.22.0] - 2026-09-29
 
 ### Highlights

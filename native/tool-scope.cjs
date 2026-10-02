@@ -39,7 +39,7 @@ const TAB_TOOLS = new Set([
   "ai", "computer", "batch", "record", "video.start", "animate-audit", "perf-audit",
   "navigate", "go", "back", "forward", "reload", "tab.reload",
   "screenshot", "snap", "resize",
-  "page.read", "read_page", "page.text", "get_page_text", "page.html", "page.save", "page.state",
+  "page.read", "read_page", "page.text", "get_page_text", "page.html", "page.save", "page.state", "page.health",
   "click", "left_click", "right_click", "double_click", "triple_click", "drag", "hover", "key", "submit",
   "type", "smart_type", "find_and_type", "form_input", "form.fill", "select", "upload", "upload_image",
   "scroll", "scroll.top", "scroll.bottom", "scroll.to", "scroll.info", "scroll_to_position",

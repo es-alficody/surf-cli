@@ -743,6 +743,7 @@ const TOOLS = {
         examples: [{ cmd: "page.save --output page.html", desc: "Save current document HTML" }],
       },
       "page.state": { desc: "Get page state (modals, loading, etc.)", args: [] },
+      "page.health": { desc: "Probe content-script and CDP responsiveness in the selected tab (1.5s budget)", args: [], examples: [{ cmd: "page.health --json", desc: "Check a stalled session without reloading" }] },
       "page.readiness": {
         desc: "Classify the page once: ready, empty, loading, login, challenge, not-found, error",
         args: [],
@@ -906,11 +907,12 @@ const TOOLS = {
           ref: "Element ref (uses JS DOM method, more reliable for modals)",
           submit: "Press enter after",
           clear: "Clear first",
-          method: "cdp|js (cursor typing uses CDP; selector/ref targets use JS)"
+          method: "cdp|js (use cdp for trusted keyboard input, including ref/selector targets)"
         },
         examples: [
           { cmd: 'type "hello world"', desc: "Type at cursor (CDP events)" },
           { cmd: 'type "user@example.com" --ref e5', desc: "Type into element by ref (JS DOM)" },
+          { cmd: 'type "search query" --ref e5 --method cdp --clear --submit', desc: "Focus a field and send trusted keyboard events" },
           { cmd: 'type "search query" --submit', desc: "Type and press Enter" },
         ]
       },
@@ -1724,7 +1726,7 @@ const ALL_SOCKET_TOOLS = [
   "click_type", "click_type_submit", "type", "key", "type_submit",
   "scroll", "scroll_to", "hover", "left_click_drag", "drag", "wait",
   "computer",
-  "page.read", "page.text", "page.html", "page.save", "page.state",
+  "page.read", "page.text", "page.html", "page.save", "page.state", "page.health",
   "locate.role", "locate.text", "locate.label",
   "tab.list", "tab.new", "tab.switch", "tab.close", "tab.move", "tab.name", "tab.unname", "tab.named",
   "tab.group", "tab.ungroup", "tab.groups", "tab.reload",
@@ -3516,10 +3518,7 @@ if (methodFlag === "js") {
     finalTool = "js";
   }
 } else if (methodFlag === "cdp") {
-  if (tool === "type" && (toolArgs.selector || toolArgs.ref)) {
-    console.error("Error: --method cdp types at the current focus and cannot be combined with --into, --selector, or --ref");
-    process.exit(1);
-  }
+  if (tool === "type") toolArgs.method = "cdp";
   if (tool === "smart_type") {
     console.error("Error: smart_type uses the JS input path and cannot be combined with --method cdp");
     process.exit(1);

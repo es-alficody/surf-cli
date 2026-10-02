@@ -490,10 +490,10 @@ describe("CDPController", () => {
     it("captures screenshot and returns base64 with dimensions", async () => {
       mockChrome.debugger.sendCommand
         .mockResolvedValueOnce({}) // Page.enable from attach
-        .mockResolvedValueOnce({ data: "base64imagedata" }) // captureScreenshot
         .mockResolvedValueOnce({
           visualViewport: { clientWidth: 1920, clientHeight: 1080 },
-        }); // getLayoutMetrics
+        }) // getLayoutMetrics
+        .mockResolvedValueOnce({ data: "base64imagedata" }); // captureScreenshot
 
       const result = await controller.captureScreenshot(tabId);
 
@@ -505,17 +505,23 @@ describe("CDPController", () => {
     it("calls Page.captureScreenshot with png format", async () => {
       mockChrome.debugger.sendCommand
         .mockResolvedValueOnce({}) // Page.enable
-        .mockResolvedValueOnce({ data: "base64" })
         .mockResolvedValueOnce({
-          visualViewport: { clientWidth: 800, clientHeight: 600 },
-        });
+          cssVisualViewport: { clientWidth: 800, clientHeight: 600, pageX: 0, pageY: 120 },
+          visualViewport: { clientWidth: 1600, clientHeight: 1200 },
+        })
+        .mockResolvedValueOnce({ data: "base64" });
 
       await controller.captureScreenshot(tabId);
 
       expect(mockChrome.debugger.sendCommand).toHaveBeenCalledWith(
         { tabId },
         "Page.captureScreenshot",
-        { format: "png", captureBeyondViewport: false },
+        {
+          format: "png",
+          fromSurface: true,
+          captureBeyondViewport: true,
+          clip: { x: 0, y: 120, width: 800, height: 600, scale: 1 },
+        },
       );
     });
 
@@ -523,6 +529,7 @@ describe("CDPController", () => {
       vi.useFakeTimers();
       mockChrome.debugger.sendCommand
         .mockResolvedValueOnce({}) // Page.enable
+        .mockResolvedValueOnce({ cssVisualViewport: { clientWidth: 800, clientHeight: 600 } })
         .mockReturnValueOnce(
           new Promise(() => {
             /* intentionally pending */
@@ -543,7 +550,6 @@ describe("CDPController", () => {
       vi.useFakeTimers();
       mockChrome.debugger.sendCommand
         .mockResolvedValueOnce({})
-        .mockResolvedValueOnce({ data: "base64" })
         .mockReturnValueOnce(new Promise(() => undefined));
 
       const capture = controller.captureScreenshot(tabId);
@@ -574,7 +580,12 @@ describe("CDPController", () => {
       expect(mockChrome.debugger.sendCommand).toHaveBeenCalledWith(
         { tabId },
         "Page.captureScreenshot",
-        { format: "png", clip: { x: 100, y: 200, width: 300, height: 400, scale: 1 } },
+        {
+          format: "png",
+          fromSurface: true,
+          captureBeyondViewport: true,
+          clip: { x: 100, y: 200, width: 300, height: 400, scale: 1 },
+        },
       );
     });
   });
@@ -841,6 +852,15 @@ describe("CDPController", () => {
   });
 
   describe("pressKeyChord", () => {
+    it("does not insert shortcut text or text on key-up", async () => {
+      const controller = new CDPController();
+      mockChrome.debugger.sendCommand.mockResolvedValue({});
+      await controller.pressKeyChord(1901, "ctrl+a");
+      const events = mockChrome.debugger.sendCommand.mock.calls.filter(
+        (call) => call[1] === "Input.dispatchKeyEvent",
+      );
+      expect(events.map((call) => call[2].text)).toEqual(["", ""]);
+    });
     let controller: CDPController;
     const tabId = 1900;
 
