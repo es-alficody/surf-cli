@@ -371,6 +371,24 @@ describe("CLI native socket integration", () => {
     });
   });
 
+  it.each(["1001", "001001", "true", "false", "12.50", ""])(
+    "preserves typed text %j in positional and --text arguments",
+    async (text) => {
+      for (const textArgs of [[text], ["--text", text]]) {
+        const result = await runCliWithFakeHost(
+          ["type", ...textArgs, "--ref", "e1", "--method", "cdp", "--no-screenshot"],
+          (request) => responseWithText(request, JSON.stringify({ success: true })),
+        );
+
+        expect(result.code).toBe(0);
+        expect(result.request.params).toMatchObject({
+          tool: "type",
+          args: { text, ref: "e1", method: "cdp" },
+        });
+      }
+    },
+  );
+
   it.each([
     ["plain text", "hello from CDP"],
     ["JSON object text", '{"answer":42}'],

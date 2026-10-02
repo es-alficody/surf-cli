@@ -3050,10 +3050,12 @@ const parseArgs = (rawArgs) => {
         const next = rawArgs[i + 1];
         if (next !== undefined && !next.startsWith("--") && !next.startsWith("-")) {
           let val = next;
-          if (val === "true") val = true;
-          else if (val === "false") val = false;
-          else if (/^-?\d+$/.test(val)) val = parseInt(val, 10);
-          else if (/^-?\d+\.\d+$/.test(val)) val = parseFloat(val);
+          if (key !== "text") {
+            if (val === "true") val = true;
+            else if (val === "false") val = false;
+            else if (/^-?\d+$/.test(val)) val = parseInt(val, 10);
+            else if (/^-?\d+\.\d+$/.test(val)) val = parseFloat(val);
+          }
           result.options[key] = val;
           i++;
         } else {
@@ -3305,9 +3307,11 @@ if (firstArg !== undefined) {
   const primaryKey = PRIMARY_ARG_MAP[tool];
   if (primaryKey && toolArgs[primaryKey] === undefined) {
     let val = firstArg;
-    if (val === "true") val = true;
-    else if (val === "false") val = false;
-    else if (/^-?\d+$/.test(val)) val = parseInt(val, 10);
+    if (primaryKey !== "text") {
+      if (val === "true") val = true;
+      else if (val === "false") val = false;
+      else if (/^-?\d+$/.test(val)) val = parseInt(val, 10);
+    }
     toolArgs[primaryKey] = val;
   }
 }
