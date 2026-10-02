@@ -1969,6 +1969,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse(result);
       break;
     }
+    case "VERIFY_INPUT":
     case "FOCUS_ELEMENT": {
       try {
         const resolved = message.ref ? resolveRef(message.ref) : { element: document.querySelector(message.selector) };
@@ -1989,6 +1990,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         if (target instanceof HTMLInputElement && !["text", "search", "email", "url", "tel", "password", "number"].includes(target.type)) {
           sendResponse({ error: `Input type ${target.type} does not support text typing` });
+          break;
+        }
+        if (message.type === "VERIFY_INPUT") {
+          const value = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+            ? target.value : target.innerText;
+          // Never return field contents, including passwords, in diagnostics.
+          sendResponse({ success: true, matches: value === message.text });
           break;
         }
         if (target.matches(":disabled, [readonly]")) {

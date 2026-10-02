@@ -555,6 +555,8 @@ surf type "search term" --into '#SearchTextBox' --method cdp --clear --submit
 
 CDP mode focuses the exact target, works in background tabs, and honors the selected iframe. `--clear` deletes existing text using keyboard events; without it, CDP inserts at the cursor. `--submit` sends a trusted Enter. Check the application's result after submission. A successful DOM fill does not prove the application's model committed the value. Keep DOM clicks via `js` for D365 controls where they already work.
 
+Targeted CDP typing lets focus handlers settle before the keys arrive. Single-line `--clear` typing verifies the retained field text before sending Enter; `input_value_mismatch` means the application changed it, and submission was skipped. Wait for form readiness, inspect the field, and retry explicitly. Surf does not replay the input automatically.
+
 Background screenshots use the target's rendering surface without switching tabs. After a timeout, use `surf page.health --json` in the same session to probe the content script and CDP runtime (1.5s budget). Reads fail with `content_script_timeout` after 10s; JavaScript evaluations fail with `cdp_timeout` after 15s. Surf does not retry a timed-out script, which may still be running. Inspect application state before repeating writes. `session.ensure` checks the binding rather than page responsiveness. Reload only when losing unsaved state is acceptable, then run `page.read` for fresh refs. Refresh refs after navigation or a stale-ref error.
 
 ```bash

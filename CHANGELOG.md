@@ -7,6 +7,7 @@
 - `page.health` reports content-script and CDP runtime responsiveness with a 1.5-second probe budget.
 
 ### Fixed
+- Targeted CDP typing lets deferred focus handlers settle and verifies single-line replacement text before submitting, preventing partial search terms from being submitted when a slow controlled input resets itself.
 - Readiness waits respect visible `aria-busy` regions and detect session-ended screens. Explicit waits support up to 30 minutes across the CLI, native host and extension; individual probes are bounded to two seconds or the remaining budget so slow or stalled renderers can recover without replaying actions.
 - Cursor typing now honors `--clear` and `--submit`; DOM ref typing honors `--submit`.
 - CDP text entry uses correct key codes for spaces, digits and punctuation, avoids inserting shortcut/key-up text, and uses `Input.insertText` for Unicode.

@@ -20,7 +20,7 @@ describe("trusted input and page health", () => {
 
   it("focuses the requested frame before clearing, typing, and submitting", async () => {
     const { chrome, handleMessage } = await load();
-    chrome.tabs.sendMessage.mockResolvedValue({ success: true });
+    chrome.tabs.sendMessage.mockResolvedValue({ success: true, matches: true });
     await handleMessage(
       {
         type: "EXECUTE_TYPE",
@@ -66,6 +66,46 @@ describe("trusted input and page health", () => {
       "Emulation.setFocusEmulationEnabled",
       { enabled: false },
     );
+  });
+
+  it("does not submit or replay typing when a controlled field overwrites the text", async () => {
+    const { chrome, handleMessage } = await load();
+    chrome.tabs.sendMessage.mockImplementation((_tabId, message) =>
+      Promise.resolve(
+        message.type === "VERIFY_INPUT" ? { success: true, matches: false } : { success: true },
+      ),
+    );
+    await expect(
+      handleMessage(
+        {
+          type: "EXECUTE_TYPE",
+          tabId: 42,
+          frameId: 7,
+          selector: "#search",
+          text: "query",
+          clear: true,
+          submit: true,
+        },
+        {},
+      ),
+    ).rejects.toMatchObject({
+      code: "input_value_mismatch",
+      details: { tabId: 42, frameId: 7, submitted: false },
+    });
+    expect(chrome.tabs.sendMessage).toHaveBeenLastCalledWith(
+      42,
+      expect.objectContaining({
+        type: "VERIFY_INPUT",
+        selector: "#search",
+        text: "query",
+      }),
+      { frameId: 7 },
+    );
+    const keys = chrome.debugger.sendCommand.mock.calls
+      .filter((call) => call[1] === "Input.dispatchKeyEvent")
+      .map((call) => call[2]);
+    expect(keys.some((key) => key.key === "Enter")).toBe(false);
+    expect(keys.filter((key) => key.key === "q" && key.type === "keyDown")).toHaveLength(1);
   });
 
   it("submits a JS ref fill from that field", async () => {

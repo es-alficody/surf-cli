@@ -22,6 +22,13 @@ const field = document.querySelector("#search");
 field.addEventListener("input", event => {
   window.events.push({ type: event.type, trusted: event.isTrusted, focused: document.hasFocus() });
   if (event.isTrusted) window.model = field.value;
+  if (window.resetDuringTyping && field.value) {
+    window.resetDuringTyping = false;
+    setTimeout(() => { field.value = ""; }, 40);
+  }
+});
+field.addEventListener("focus", () => {
+  if (window.resetOnFocus) setTimeout(() => { field.value = ""; }, 25);
 });
 field.addEventListener("keydown", event => {
   window.events.push({ type: event.type, key: event.key, trusted: event.isTrusted });
@@ -63,6 +70,22 @@ try {
   // The same field ignores the existing DOM-write path.
   await call({ type: "FORM_INPUT", ref, value: "synthetic" });
   assert.equal(await page.evaluate(() => window.model), "");
+
+  await page.evaluate(() => {
+    document.querySelector("#search").blur();
+    window.resetOnFocus = true;
+  });
+  const afterFocus = await call({ type: "EXECUTE_TYPE", selector: "#search", text: "focus reset", clear: true, submit: true });
+  assert.equal(afterFocus.success, true, JSON.stringify(afterFocus));
+  assert.equal(await page.evaluate(() => document.querySelector("#result").textContent), "focus reset");
+  await page.evaluate(() => {
+    window.resetOnFocus = false;
+    window.resetDuringTyping = true;
+    window.events = [];
+  });
+  const overwritten = await call({ type: "EXECUTE_TYPE", selector: "#search", text: "overwritten", clear: true, submit: true });
+  assert.match(overwritten.error, /did not retain the typed text.*Submission was skipped/);
+  assert.equal(await page.evaluate(() => window.events.some(event => event.key === "Enter")), false);
 
   const expected = "Search A 12!? ø漢😀";
   const typed = await call({ type: "EXECUTE_TYPE", ref, text: expected, clear: true, submit: true });

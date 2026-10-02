@@ -1047,9 +1047,26 @@ export async function handleMessage(
             type: "FOCUS_ELEMENT", ref: message.ref, selector: message.selector, expectedIdentity: message.expectedIdentity,
           }, getFrameIdForTab(tabId, message));
           if (!focused?.success) throw new BrowserCommandError(focused?.code || "input_focus_failed", focused?.error || "Could not focus target field", { tabId });
+          // Controlled fields can defer their focus-time reset. Let that work
+          // run before sending keys, rather than losing the first characters.
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
         if (message.clear) await cdp.clearFocusedInput(tabId);
         await cdp.type(tabId, message.text);
+        if (message.clear && (message.ref || message.selector) && !/[\r\n]/.test(message.text)) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          const checked = await contentRequest(tabId, {
+            type: "VERIFY_INPUT", ref: message.ref, selector: message.selector, text: message.text,
+            expectedIdentity: message.expectedIdentity,
+          }, getFrameIdForTab(tabId, message));
+          if (checked?.matches !== true) {
+            throw new BrowserCommandError(
+              "input_value_mismatch",
+              "The target field did not retain the typed text. Submission was skipped. Inspect the field and wait for the form to finish updating before retrying.",
+              { tabId, frameId: getFrameIdForTab(tabId, message), submitted: false },
+            );
+          }
+        }
         if (message.submit) await cdp.pressKey(tabId, message.submitKey || "Enter");
       });
       return { success: true };
