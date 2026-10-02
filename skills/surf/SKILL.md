@@ -498,6 +498,16 @@ surf page.readiness --json     # Classify the current page once (state + evidenc
 
 Typed readiness states replace "the selector never appeared": exit codes carry `page_login`, `page_challenge`, `page_not_found`, `page_error` or `page_timeout`. Detection uses visible UI (a rendered password field, a login route, the page's wording, a URL outside `--url-prefix`), not site selectors.
 
+For D365 with an X++ server debugger attached, or slow startup after deployment/database sync, use an explicit long readiness budget. Wait for the requested form and its grid; the document and previous form can remain complete while a server call is pending. Visible `aria-busy="true"` regions prevent premature readiness. Automatic action settling and `wait.load` do not prove the requested form is usable.
+
+```bash
+surf --session orders wait.ready --selector '[role="form"][aria-label^="All sales orders"] [role="grid"][aria-label="Sales orders"]' --timeout 600000 --interval 1000 --json
+surf --session orders wait.ready --selector '[role="form"][aria-label^="All purchase orders"] [role="grid"][aria-label="Purchase orders"]' --timeout 600000 --interval 1000 --json
+surf --session orders page.read --depth 3
+```
+
+`wait.ready` defaults to 20s and accepts up to 30 minutes. Individual probes expire after at most 2s and are safe to repeat because they only read. A hung probe stays `loading` until the page recovers or the whole budget expires with `page_timeout` and the last evidence. A session-ended screen asking to start a new session/sign in fails fast with `page_login`; inspect it and restart the session explicitly. Waiting does not reload or replay actions. Refresh refs after the final form renders. Do not treat the number of visible rows in a virtualized grid as the number of orders in the database.
+
 ## Dialog Handling
 
 ```bash

@@ -204,7 +204,11 @@ function readinessExpectationsFrom(input: unknown): ReadinessExpectations {
  * content script (mid-navigation, or not injected yet) is `loading`, so the
  * poll loop needs no special cases.
  */
-async function probeTabReadiness(tabId: number, expect: ReadinessExpectations): Promise<ReadinessProbeResult> {
+async function probeTabReadiness(
+  tabId: number,
+  expect: ReadinessExpectations,
+  timeoutMs = 2000,
+): Promise<ReadinessProbeResult> {
   let tabStatus: string | undefined;
   let tabUrl: string | undefined;
   let pendingUrl: string | undefined;
@@ -222,7 +226,7 @@ async function probeTabReadiness(tabId: number, expect: ReadinessExpectations): 
   }
   let report;
   try {
-    report = await chrome.tabs.sendMessage(tabId, { type: "PAGE_READINESS", expect }, { frameId: 0 });
+    report = await contentRequest(tabId, { type: "PAGE_READINESS", expect }, 0, timeoutMs);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     return { state: "loading", evidence: [`content script unreachable: ${reason}`], href: tabUrl, tabStatus };
@@ -2110,7 +2114,7 @@ export async function handleMessage(
       const outcome = await pollReadiness({
         ...budget,
         accept,
-        probe: () => probeTabReadiness(tabId, expect),
+        probe: (remainingMs) => probeTabReadiness(tabId, expect, Math.min(2000, remainingMs)),
       });
       const summary = {
         state: outcome.result.state,

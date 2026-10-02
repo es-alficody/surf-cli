@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createChromeMock, resetChromeMock } from "../../mocks/chrome";
 
 vi.mock("../../../src/native/port-manager", () => ({
@@ -27,6 +27,82 @@ function report(state: string, extra: Record<string, unknown> = {}) {
 describe("readiness handlers", () => {
   beforeEach(() => {
     resetChromeMock();
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it("bounds an unresponsive single probe and reports loading", async () => {
+    const handleMessage = await loadHandleMessage();
+    const chrome = (globalThis as any).chrome;
+    chrome.tabs.get.mockResolvedValue({ id: 5, url: "https://example.com/", status: "complete" });
+    chrome.tabs.sendMessage.mockImplementation(
+      () =>
+        new Promise(() => {
+          /* Deliberately never responds. */
+        }),
+    );
+    vi.useFakeTimers();
+    const pending = handleMessage({ type: "PAGE_READINESS", tabId: 5 }, {});
+    await vi.advanceTimersByTimeAsync(2000);
+    await expect(pending).resolves.toMatchObject({
+      state: "loading",
+      evidence: [expect.stringContaining("did not respond within 2000ms")],
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("recovers from an unresponsive probe without replaying an action", async () => {
+    const handleMessage = await loadHandleMessage();
+    const chrome = (globalThis as any).chrome;
+    chrome.tabs.get.mockResolvedValue({ id: 5, url: "https://example.com/", status: "complete" });
+    let finishLate: (value: unknown) => void = () => {
+      /* Replaced by the deferred probe's resolver. */
+    };
+    chrome.tabs.sendMessage
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishLate = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(report("ready"));
+    vi.useFakeTimers();
+    const pending = handleMessage({ type: "WAIT_FOR_READY", tabId: 5, timeout: 600000 }, {});
+    await vi.advanceTimersByTimeAsync(2400);
+    await expect(pending).resolves.toMatchObject({
+      state: "ready",
+      polls: 2,
+      timeout: 600000,
+      waited: 2400,
+    });
+    finishLate(report("login"));
+    await Promise.resolve();
+    expect(chrome.tabs.sendMessage.mock.calls.map((call: any[]) => call[1].type)).toEqual([
+      "PAGE_READINESS",
+      "PAGE_READINESS",
+    ]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("a hung probe cannot exceed the caller's short readiness deadline", async () => {
+    const handleMessage = await loadHandleMessage();
+    const chrome = (globalThis as any).chrome;
+    chrome.tabs.get.mockResolvedValue({ id: 5, url: "https://example.com/", status: "complete" });
+    chrome.tabs.sendMessage.mockImplementation(
+      () =>
+        new Promise(() => {
+          /* Deliberately never responds. */
+        }),
+    );
+    vi.useFakeTimers();
+    const pending = handleMessage({ type: "WAIT_FOR_READY", tabId: 5, timeout: 120 }, {});
+    const assertion = expect(pending).rejects.toMatchObject({
+      code: "page_timeout",
+      details: expect.objectContaining({ waited: 120, polls: 1, state: "loading" }),
+    });
+    await vi.advanceTimersByTimeAsync(120);
+    await assertion;
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("PAGE_READINESS forwards expectations to the content script and adds the tab status", async () => {

@@ -636,6 +636,17 @@ surf wait.ready --url-prefix "https://app.example.com/" --empty-text "No results
 surf wait.ready --accept login --json   # {"state":"login","evidence":[...]} instead of an error
 ```
 
+For a slow SPA or a server paused in a debugger, wait for the **requested form's** controls, not a generic grid left over from the previous form. Visible `aria-busy="true"` regions keep the page in `loading`, even when the document is complete or the selector already exists. Session-ended screens that ask to start a new session or sign in report `page_login`.
+
+```bash
+surf --session orders wait.ready --selector '[role="form"][aria-label^="All sales orders"] [role="grid"][aria-label="Sales orders"]' --timeout 600000 --interval 1000 --json
+surf --session orders wait.ready --selector '[role="form"][aria-label^="All purchase orders"] [role="grid"][aria-label="Purchase orders"]' --timeout 600000 --interval 1000 --json
+```
+
+The default is 20 seconds; explicit budgets can be up to 30 minutes. The CLI and native host honor the same budget. Each content-script probe is limited to two seconds or the remaining budget, whichever is shorter. An unresponsive probe reports `loading` and the wait can recover when the page responds again. Waiting only observes the page: it does not reload, replay navigation, or repeat a business action. If a deployment leaves an error or session-ended screen that requires user action, inspect that state before restarting navigation. After readiness succeeds, run `page.read` for fresh refs. A virtualized grid's visible rows are not its total record count.
+
+Run `npm run test:e2e:readiness` for the real-browser delayed-form and renderer-stall checks. Set `SURF_READINESS_LONG_TEST=1` to hold the fixture's server response for 130 seconds, beyond the former two-minute cap.
+
 ### Extracting structured data
 
 `surf extract` composes existing client-side tools: it opens an owned tab,

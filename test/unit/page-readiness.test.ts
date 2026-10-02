@@ -33,6 +33,33 @@ describe("classifyReadiness", () => {
     expect(verdict.evidence).toEqual(["document.readyState is complete"]);
   });
 
+  it("keeps a rendered form loading while a visible region is busy, including stale empty text", () => {
+    const busy = snapshot({
+      visibleBusyRegions: 1,
+      selector: { expected: '[role="grid"]', matched: true },
+      emptyText: { expected: "No results", matched: true },
+    });
+    expect(classifyReadiness(busy)).toEqual({
+      state: "loading",
+      evidence: ["1 visible aria-busy region(s); content is still updating"],
+    });
+    expect(classifyReadiness({ ...busy, visibleBusyRegions: 0 }).state).toBe("empty");
+  });
+
+  it("recognizes a session-ended screen without a login URL or password field", () => {
+    const expired = snapshot({
+      bodyTextSample:
+        "Session ended There was no activity for a while so we closed the session. Start new session",
+      visibleTextInputs: 0,
+    });
+    expect(classifyReadiness(expired).state).toBe("login");
+    expect(
+      classifyReadiness(
+        snapshot({ bodyTextSample: "Session expired events appear in this report." }),
+      ).state,
+    ).toBe("ready");
+  });
+
   it("reports loading while the document is still parsing", () => {
     const verdict = classifyReadiness(
       snapshot({ readyState: "interactive", tabStatus: "loading" }),
@@ -257,6 +284,7 @@ describe("collectReadinessSnapshot", () => {
         "#challenge-running": 1,
         "iframe[src*='captcha' i]": 2,
         "iframe[title*='captcha' i]": 1,
+        '[aria-busy="true"]': 1,
       },
     });
     const result = collectReadinessSnapshot(dom);
@@ -265,6 +293,7 @@ describe("collectReadinessSnapshot", () => {
     expect(result.visiblePasswordInputs).toBe(1);
     expect(result.challengeMarkers).toEqual(["#challenge-running"]);
     expect(result.captchaFrames).toBe(3);
+    expect(result.visibleBusyRegions).toBe(1);
     expect(result.bodyTextLength).toBe("Projects Alpha Beta No results found".length);
   });
 

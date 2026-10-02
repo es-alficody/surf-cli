@@ -61,6 +61,7 @@ export function collectReadinessSnapshot(
     headings: dom.visibleHeadings().map(normalizeText).filter(Boolean).slice(0, 5),
     visiblePasswordInputs: safeCount(dom, "input[type='password']"),
     visibleTextInputs: safeCount(dom, TEXT_INPUT_SELECTOR),
+    visibleBusyRegions: safeCount(dom, '[aria-busy="true"]'),
     challengeMarkers: CHALLENGE_MARKER_SELECTORS.filter((selector) => safeCount(dom, selector) > 0),
     captchaFrames: CAPTCHA_FRAME_SELECTORS.reduce((sum, selector) => sum + safeCount(dom, selector), 0),
   };

@@ -91,6 +91,9 @@ jobs:
       - name: Verify background input and screenshots
         run: npm run test:e2e:input
 
+      - name: Verify slow form readiness and renderer recovery
+        run: npm run test:e2e:readiness
+
   audit:
     runs-on: ubuntu-latest
     steps:

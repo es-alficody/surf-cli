@@ -867,7 +867,7 @@ const TOOLS = {
           "url-prefix": "Expected URL prefix; anything else is a bounce",
           "empty-text": "Text of an explicit no-results render (reports state 'empty')",
           accept: "Negative states to return instead of fail (comma list)",
-          timeout: "Max wait time in ms (default: 20000, max: 120000)",
+          timeout: "Max wait time in ms (default: 20000, max: 1800000)",
           interval: "Poll interval in ms (default: 400)",
         },
         examples: [

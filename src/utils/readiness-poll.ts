@@ -81,7 +81,7 @@ export interface ReadinessBudget {
 }
 
 export const DEFAULT_READINESS_TIMEOUT_MS = 20_000;
-export const MAX_READINESS_TIMEOUT_MS = 120_000;
+export const MAX_READINESS_TIMEOUT_MS = 30 * 60 * 1000;
 export const DEFAULT_READINESS_INTERVAL_MS = 400;
 export const MIN_READINESS_INTERVAL_MS = 50;
 
@@ -97,7 +97,8 @@ export function clampReadinessBudget(input: { timeoutMs?: unknown; intervalMs?: 
 }
 
 export interface ReadinessPollOptions extends ReadinessBudget {
-  probe: () => Promise<ReadinessProbeResult>;
+  /** Remaining budget, so an unresponsive probe cannot outlive the wait. */
+  probe: (remainingMs: number) => Promise<ReadinessProbeResult>;
   /** Negative states that end the wait successfully instead of failing it. */
   accept?: readonly ReadinessState[];
   sleep?: (ms: number) => Promise<void>;
@@ -131,7 +132,7 @@ export async function pollReadiness(options: ReadinessPollOptions): Promise<Read
   let last: ReadinessProbeResult = { state: "loading", evidence: ["no probe completed"] };
 
   for (;;) {
-    last = await options.probe();
+    last = await options.probe(Math.max(1, options.timeoutMs - (now() - startedAt)));
     polls += 1;
     const waitedMs = now() - startedAt;
     options.onPoll?.(last, polls, waitedMs);

@@ -52,6 +52,8 @@ export interface ReadinessSnapshot {
   headings: string[];
   visiblePasswordInputs: number;
   visibleTextInputs: number;
+  /** Visible regions whose accessibility state says content is still updating. */
+  visibleBusyRegions?: number;
   /** Selectors from CHALLENGE_MARKER_SELECTORS that matched. */
   challengeMarkers: string[];
   /** Visible captcha or challenge iframes. */
@@ -190,6 +192,14 @@ function classifyLogin(snapshot: ReadinessSnapshot): ReadinessVerdict | null {
   const titleLooksLogin = LOGIN_TITLE_PATTERN.test(snapshot.title);
   const bounced = snapshot.urlPrefix !== undefined && !snapshot.urlPrefix.matched;
 
+  if (
+    snapshot.bodyTextLength < SHORT_PAGE_TEXT_LENGTH &&
+    /\bsession (?:has )?(?:ended|expired)\b/i.test(snapshot.bodyTextSample) &&
+    /\b(?:start (?:a )?new session|sign (?:back )?in|log (?:back )?in)\b/i.test(snapshot.bodyTextSample)
+  ) {
+    return { state: "login", evidence: ["session ended or expired; page asks to start a new session or sign in"] };
+  }
+
   if (passwordVisible) evidence.push(`${snapshot.visiblePasswordInputs} visible password field(s)`);
   if (urlLooksLogin) evidence.push(`URL path ${pathnameOf(snapshot.href)} looks like a login route`);
   if (titleLooksLogin) evidence.push(`title "${snapshot.title}" mentions signing in`);
@@ -234,6 +244,13 @@ export function classifyReadiness(snapshot: ReadinessSnapshot): ReadinessVerdict
     return {
       state: "loading",
       evidence: [`URL ${snapshot.href} does not start with ${snapshot.urlPrefix.expected}`],
+    };
+  }
+
+  if ((snapshot.visibleBusyRegions ?? 0) > 0) {
+    return {
+      state: "loading",
+      evidence: [`${snapshot.visibleBusyRegions} visible aria-busy region(s); content is still updating`],
     };
   }
 

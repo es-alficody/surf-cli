@@ -7,6 +7,7 @@
 - `page.health` reports content-script and CDP runtime responsiveness with a 1.5-second probe budget.
 
 ### Fixed
+- Readiness waits respect visible `aria-busy` regions and detect session-ended screens. Explicit waits support up to 30 minutes across the CLI, native host and extension; individual probes are bounded to two seconds or the remaining budget so slow or stalled renderers can recover without replaying actions.
 - Cursor typing now honors `--clear` and `--submit`; DOM ref typing honors `--submit`.
 - CDP text entry uses correct key codes for spaces, digits and punctuation, avoids inserting shortcut/key-up text, and uses `Input.insertText` for Unicode.
 - Background screenshots capture an explicit viewport from the target's surface. Visible-tab fallback never captures a different tab and preserves the original CDP failure.

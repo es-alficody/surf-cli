@@ -253,7 +253,8 @@ describe("host session manager", () => {
     expect(resolveRequestDeadlineMs("wait.ready")).toBe(20000 + 5000);
     expect(resolveRequestDeadlineMs("wait.ready", { timeout: 60001 })).toBe(60001 + 5000);
     expect(resolveRequestDeadlineMs("wait.ready", { timeout: 120000 })).toBe(120000 + 5000);
-    expect(resolveRequestDeadlineMs("wait.ready", { timeout: 999999 })).toBe(120000 + 5000);
+    expect(resolveRequestDeadlineMs("wait.ready", { timeout: 600000 })).toBe(600000 + 5000);
+    expect(resolveRequestDeadlineMs("wait.ready", { timeout: 9999999 })).toBe(1800000 + 5000);
     expect(resolveRequestDeadlineMs("chatgpt")).toBe(2700000 + 60000);
     expect(resolveRequestDeadlineMs("gemini", { timeout: 10 })).toBe(10000 + 60000);
     expect(resolveRequestDeadlineMs("kimi")).toBe(300000 + 60000);

@@ -57,9 +57,34 @@ describe("clampReadinessBudget", () => {
       intervalMs: 200,
     });
   });
+
+  it("honors a ten-minute debugger budget", () => {
+    expect(clampReadinessBudget({ timeoutMs: 600_000, intervalMs: 1000 })).toEqual({
+      timeoutMs: 600_000,
+      intervalMs: 1000,
+    });
+  });
 });
 
 describe("pollReadiness", () => {
+  it("passes the remaining deadline to slow probes", async () => {
+    const clock = fakeClock();
+    const budgets: number[] = [];
+    const outcome = await pollReadiness({
+      timeoutMs: 600_000,
+      intervalMs: 1000,
+      now: clock.now,
+      sleep: clock.sleep,
+      probe: async (remainingMs) => {
+        budgets.push(remainingMs);
+        clock.advance(130_000);
+        return { state: budgets.length === 2 ? "ready" : "loading", evidence: [] };
+      },
+    });
+    expect(outcome.kind).toBe("settled");
+    expect(outcome.waitedMs).toBe(261_000);
+    expect(budgets).toEqual([600_000, 469_000]);
+  });
   it("keeps polling through loading and settles on ready", async () => {
     const clock = fakeClock();
     const outcome = await pollReadiness({
